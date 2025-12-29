@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手脚游戏抽选器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft Yahei", sans-serif;
+        }
+        body {
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .draw-area {
+            background-color: white;
+            padding: 40px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .btn-group{margin-bottom:30px;}
+        .draw-btn, .clear-btn {
+            padding: 12px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin:0 8px;
+        }
+        .draw-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .draw-btn:hover {background-color: #45a049;}
+        .clear-btn {
+            background-color: #f44336;
+            color: white;
+        }
+        .clear-btn:hover {background-color: #d32f2f;}
+        .result-display {
+            font-size: 26px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .history-list {
+            margin-top: 20px;
+            text-align: left;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .history-list h3 {
+            margin-bottom: 10px;
+            color: #555;
+        }
+        .history-item {
+            padding: 8px 12px;
+            background-color: #f9f9f9;
+            border-left: 3px solid #4CAF50;
+            margin-bottom: 5px;
+            border-radius: 2px;
+        }
+        .setting-area {
+            background-color: white;
+            padding: 30px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .setting-group {
+            margin-bottom: 25px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .setting-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        .setting-group textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            resize: vertical;
+        }
+        .checkbox-wrap{
+            margin:8px 0;
+            font-size:15px;
+            color:#666;
+        }
+        input[type="checkbox"]{
+            width:16px;height:16px;
+            vertical-align: middle;
+            margin-right:6px;
+        }
+        .tips {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+            line-height:1.5;
+        }
+    </style>
+</head>
+<body>
+    <!-- 抽选区域 -->
+    <div class="draw-area">
+        <div class="btn-group">
+            <button class="draw-btn" id="drawBtn">开始抽选</button>
+            <button class="clear-btn" id="clearBtn">清空结果</button>
+        </div>
+        <div class="result-display" id="resultDisplay">点击按钮开始抽选</div>
+        <div class="history-list">
+            <h3>抽选历史</h3>
+            <div id="historyContainer"></div>
+        </div>
+    </div>
+
+    <!-- 设置区域 -->
+    <div class="setting-area">
+        <div class="setting-group">
+            <label for="bodyPartsInput">身体部位（用顿号、分隔）</label>
+            <textarea id="bodyPartsInput">手、脚、头、膝盖、手肘</textarea>
+            <div class="checkbox-wrap">
+                <input type="checkbox" id="allowRepeatPart" checked="checked"> 允许身体部位重复抽选（取消则每个部位仅抽1次）
+            </div>
+            <div class="tips">示例：手、脚、头、膝盖、手肘 | 支持输入重复值：手、手、头（可抽选2次手）</div>
+        </div>
+        <div class="setting-group">
+            <label for="colorsInput">颜色（用顿号、分隔）</label>
+            <textarea id="colorsInput">红、黄、蓝、绿、粉</textarea>
+            <div class="checkbox-wrap">
+                <input type="checkbox" id="allowRepeatColor" checked="checked"> 允许颜色重复抽选（取消则每个颜色仅抽1次）
+            </div>
+            <div class="tips">示例：红、黄、蓝、绿、粉 | 支持输入重复值：红、红、黄（可抽选2次红）</div>
+        </div>
+    </div>
+
+    <script>
+        // 严格ES5语法 无任何ES6+特性 自执行函数隔离作用域
+        (function() {
+            // 获取所有DOM元素
+            var drawBtn = document.getElementById('drawBtn');
+            var clearBtn = document.getElementById('clearBtn');
+            var resultDisplay = document.getElementById('resultDisplay');
+            var historyContainer = document.getElementById('historyContainer');
+            var bodyPartsInput = document.getElementById('bodyPartsInput');
+            var colorsInput = document.getElementById('colorsInput');
+            var allowRepeatPart = document.getElementById('allowRepeatPart');
+            var allowRepeatColor = document.getElementById('allowRepeatColor');
+            
+            // 全局数据存储
+            var historyList = []; // 抽选历史记录
+            var lastResult = '';  // 上一次抽选结果，用于去重最近两次
+            var usedParts = [];   // 已抽选过的身体部位（禁止重复时用）
+            var usedColors = [];  // 已抽选过的颜色（禁止重复时用）
+
+            // 工具函数：处理文本框内容，仅去空，保留手动输入的重复项，按中文顿号分割
+            function getProcessedList(textareaValue) {
+                return textareaValue.split('、')
+                    .map(function(item) {
+                        return item.trim();
+                    })
+                    .filter(function(item) {
+                        return item !== ''; // 只过滤空值，保留重复项
+                    });
+            }
+
+            // 工具函数：随机获取数组中的一个元素
+            function getRandomItem(arr) {
+                var randomIndex = Math.floor(Math.random() * arr.length);
+                return arr[randomIndex];
+            }
+
+            // 核心抽选逻辑 - 完整实现所有需求
+            function drawRandom() {
+                // 1. 获取处理后的原始列表（保留重复项）
+                var allBodyParts = getProcessedList(bodyPartsInput.value);
+                var allColors = getProcessedList(colorsInput.value);
+                
+                // 容错：如果列表为空，恢复默认值
+                if(allBodyParts.length === 0) allBodyParts = ['手','脚','头','膝盖','手肘'];
+                if(allColors.length === 0) allColors = ['红','黄','蓝','绿','粉'];
+
+                // 2. 根据「允许重复」复选框状态，过滤出可抽选的列表
+                var usableParts = allowRepeatPart.checked 
+                    ? allBodyParts 
+                    : allBodyParts.filter(function(item){ return usedParts.indexOf(item) === -1; });
+                var usableColors = allowRepeatColor.checked 
+                    ? allColors 
+                    : allColors.filter(function(item){ return usedColors.indexOf(item) === -1; });
+
+                // 容错：无可抽选内容时提示
+                if(usableParts.length === 0 && usableColors.length === 0){
+                    resultDisplay.textContent = '部位和颜色均已抽完！';
+                    return;
+                }else if(usableParts.length === 0){
+                    resultDisplay.textContent = '身体部位已全部抽选完毕！';
+                    return;
+                }else if(usableColors.length === 0){
+                    resultDisplay.textContent = '颜色已全部抽选完毕！';
+                    return;
+                }
+
+                // 3. 随机抽取，且保证【本次结果 ≠ 上一次结果】
+                var currentResult = '';
+                do {
+                    var randomPart = getRandomItem(usableParts);
+                    var randomColor = getRandomItem(usableColors);
+                    currentResult = randomPart + ' —— ' + randomColor;
+                } while (currentResult === lastResult); // 只要和上一次一样，就重新抽
+
+                // 4. 记录已使用的项（禁止重复时）
+                if(!allowRepeatPart.checked && usedParts.indexOf(randomPart) === -1){
+                    usedParts.push(randomPart);
+                }
+                if(!allowRepeatColor.checked && usedColors.indexOf(randomColor) === -1){
+                    usedColors.push(randomColor);
+                }
+
+                // 5. 更新页面展示
+                lastResult = currentResult; // 缓存本次结果，用于下次校验
+                resultDisplay.textContent = currentResult;
+                historyList.unshift(currentResult); // 最新结果放最前面
+                renderHistory();
+            }
+
+            // 渲染抽选历史记录
+            function renderHistory() {
+                historyContainer.innerHTML = '';
+                var showList = historyList.slice(0, 15); // 最多展示15条历史
+                showList.forEach(function(item, index) {
+                    var div = document.createElement('div');
+                    div.className = 'history-item';
+                    div.textContent = (index + 1) + '、' + item;
+                    historyContainer.appendChild(div);
+                });
+            }
+
+            // 清空所有结果：重置所有状态+页面内容
+            function clearAll() {
+                resultDisplay.textContent = '点击按钮开始抽选';
+                historyList = [];
+                lastResult = '';
+                usedParts = [];
+                usedColors = [];
+                renderHistory();
+            }
+
+            // 绑定点击事件
+            drawBtn.onclick = drawRandom;
+            clearBtn.onclick = clearAll;
+
+            // 页面初始化
+            renderHistory();
+        })();
+    </script>
+</body>
+</html>
